@@ -35,14 +35,16 @@ services:
       context: .
       target: runner-base
       args:
-        # Memory-constrained VPS (7.6 GB RAM): Turbopack compiles in native Rust
-        # memory outside the V8 heap and OOM-kills next-build even with big swap.
-        # Fall back to webpack, which respects --max-old-space-size and is far
-        # more predictable here. 1 worker keeps the process count (and peak RSS)
-        # low; heap capped to fit RAM+swap.
+        # Memory-constrained VPS (7.6 GB RAM + 19 GB swap): Turbopack compiles in
+        # native Rust memory outside the V8 heap and OOM-kills next-build. Webpack
+        # keeps the whole build in the V8 heap, which --max-old-space-size DOES
+        # bound. The webpack production pass peaks ~3.9 GB (repo's own note), and
+        # the build worker needs headroom above that, so use the repo's documented
+        # 8192 MB heap default — 5120 was below the real peak and SIGABRT'd the
+        # worker at the V8 heap limit. 8 GB heap is backed by RAM+swap here.
         OMNIROUTE_USE_TURBOPACK: "0"
         OMNIROUTE_BUILD_WORKERS: "1"
-        OMNIROUTE_BUILD_MEMORY_MB: "5120"
+        OMNIROUTE_BUILD_MEMORY_MB: "8192"
     image: omniroute:dokploy
     environment:
       - NODE_ENV=production
