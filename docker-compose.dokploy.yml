@@ -1,0 +1,84 @@
+# ──────────────────────────────────────────────────────────────────────
+#  OmniRoute — Dokploy deployment (single host, Traefik TLS)
+# ──────────────────────────────────────────────────────────────────────
+#  Served at https://omniroute.sahildaswani.com (root path, port 20128).
+#  Built on the VPS by Dokploy from this repo. runner-base image (no
+#  Chromium) — covers all providers except web-cookie ones (gemini-web,
+#  claude-web, claude-turnstile), which need the runner-web target.
+#
+#  Build memory: this Next.js 16 build is heavy. Workers pinned to 1 and
+#  build heap capped so a memory-tight VPS does not get OOM-killed.
+# ──────────────────────────────────────────────────────────────────────
+
+services:
+  redis:
+    image: redis:8.6.5-alpine
+    container_name: omniroute-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  omniroute:
+    container_name: omniroute
+    restart: unless-stopped
+    stop_grace_period: 40s
+    depends_on:
+      redis:
+        condition: service_healthy
+    build:
+      context: .
+      target: runner-base
+      args:
+        OMNIROUTE_BUILD_WORKERS: "1"
+        OMNIROUTE_BUILD_MEMORY_MB: "4096"
+    image: omniroute:dokploy
+    environment:
+      - NODE_ENV=production
+      - PORT=20128
+      - DASHBOARD_PORT=20128
+      - API_PORT=20129
+      - API_HOST=0.0.0.0
+      - HOSTNAME=0.0.0.0
+      - DATA_DIR=/app/data
+      - REDIS_URL=redis://redis:6379
+      # --- security / auth (public deployment) ---
+      - AUTH_COOKIE_SECURE=true
+      - REQUIRE_API_KEY=true
+      - JWT_SECRET=${JWT_SECRET}
+      - API_KEY_SECRET=${API_KEY_SECRET}
+      - STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY}
+      - INITIAL_PASSWORD=${INITIAL_PASSWORD}
+      - MACHINE_ID_SALT=${MACHINE_ID_SALT}
+      # --- live WS: keep loopback-only; dashboard live view via same-origin ---
+      - LIVE_WS_ALLOWED_ORIGINS=https://omniroute.sahildaswani.com
+    volumes:
+      - omniroute-data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.mjs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.omniroute-web.rule=Host(`omniroute.sahildaswani.com`)
+      - traefik.http.routers.omniroute-web.entrypoints=websecure
+      - traefik.http.routers.omniroute-web.tls.certresolver=letsencrypt
+      - traefik.http.services.omniroute-web.loadbalancer.server.port=20128
+
+volumes:
+  redis-data:
+    name: omniroute-redis-data
+  omniroute-data:
+    name: omniroute-data
+
+networks:
+  default:
+    name: dokploy-network
+    external: true
