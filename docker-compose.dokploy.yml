@@ -35,8 +35,14 @@ services:
       context: .
       target: runner-base
       args:
+        # Memory-constrained VPS (7.6 GB RAM): Turbopack compiles in native Rust
+        # memory outside the V8 heap and OOM-kills next-build even with big swap.
+        # Fall back to webpack, which respects --max-old-space-size and is far
+        # more predictable here. 1 worker keeps the process count (and peak RSS)
+        # low; heap capped to fit RAM+swap.
+        OMNIROUTE_USE_TURBOPACK: "0"
         OMNIROUTE_BUILD_WORKERS: "1"
-        OMNIROUTE_BUILD_MEMORY_MB: "4096"
+        OMNIROUTE_BUILD_MEMORY_MB: "5120"
     image: omniroute:dokploy
     environment:
       - NODE_ENV=production
