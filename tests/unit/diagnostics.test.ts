@@ -105,11 +105,35 @@ test("failed Responses API body gets a request-scoped machine-readable classific
   });
 });
 
+test("failed Responses API body surfaces the upstream error message when present", () => {
+  const failed = {
+    object: "response",
+    status: "failed",
+    output: [],
+    error: { code: "server_error", message: "  Gemini 503: overloaded  " },
+  };
+  const reason = detectMalformedNonStream(failed);
+  assert.equal(reason, "empty_choices");
+  assert.deepEqual(describeMalformedNonStream(failed, reason), {
+    message: "upstream reported a failed response: Gemini 503: overloaded",
+    code: "upstream_response_failed",
+    type: "upstream_response_error",
+  });
+});
+
 test("detectMalformedNonStream returns 'empty_choices' when choice message has no content", () => {
   const body = {
     choices: [{ message: { content: "", tool_calls: null }, finish_reason: "stop" }],
   };
   assert.equal(detectMalformedNonStream(body), "empty_choices");
+});
+
+test("detectMalformedNonStream returns null when empty content stopped at token limit", () => {
+  const body = {
+    choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "length" }],
+    usage: { reasoning_tokens: 28 },
+  };
+  assert.equal(detectMalformedNonStream(body), null);
 });
 
 test("detectMalformedNonStream returns null for valid chat completion", () => {
