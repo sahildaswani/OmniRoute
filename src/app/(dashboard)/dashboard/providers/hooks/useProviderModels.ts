@@ -33,6 +33,14 @@ interface UseProviderModelsResult {
  */
 export function useProviderModels(providerId: string): UseProviderModelsResult {
   const t = useTranslations("providers");
+  // `useTranslations()` may return a new function identity after a render. Keep
+  // the latest translator available to the request without making it a fetch
+  // dependency; otherwise `setLoading` causes `load` to be recreated, the effect
+  // cleans up the just-finished request, and the selector stays on "Loading".
+  const translationRef = useRef(t);
+  useEffect(() => {
+    translationRef.current = t;
+  }, [t]);
   const [models, setModels] = useState<ProviderModel[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +60,9 @@ export function useProviderModels(providerId: string): UseProviderModelsResult {
           const body = (await res.json().catch(() => null)) as {
             error?: { message?: string };
           } | null;
-          const msg = body?.error?.message ?? `${t("providerTestFailed")} (HTTP ${res.status})`;
+          const msg =
+            body?.error?.message ??
+            `${translationRef.current("providerTestFailed")} (HTTP ${res.status})`;
           if (!cancelled) setError(msg);
           return;
         }
@@ -130,7 +140,7 @@ export function useProviderModels(providerId: string): UseProviderModelsResult {
     };
     cleanupRef.current = cleanup;
     return cleanup;
-  }, [providerId, t]);
+  }, [providerId]);
 
   useEffect(() => {
     if (!providerId) return;
